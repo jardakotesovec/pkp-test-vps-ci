@@ -87,9 +87,5 @@ jobs:
             mv "$tmp_dir" "$dir"
 
             # Set permissions
-            chown -R www-data:www-data "$dir"/cache
-            chown -R www-data:www-data "$dir"/files
-            chown -R www-data:www-data "$dir"/public
-            chmod -R 775 "$dir"/cache
-            chmod -R 775 "$dir"/files
-            chmod -R 775 "$dir"/public
+            chown -R deploy:www-data "$dir"
+            chmod -R 775 "$dir"
