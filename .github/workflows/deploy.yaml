@@ -22,8 +22,11 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }} # Map secret to env for conditional check
     steps:
       - name: Deploy via SSH
+        if: ${{ env.SSH_HOST != '' }} # Skip if secret is empty/missing
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
