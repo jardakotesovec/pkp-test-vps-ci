@@ -1,0 +1,92 @@
+name: Deploy PKP Project to VPS
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: "The PKP project name (e.g., ojs, omp, ops)"
+        required: true
+        type: string
+      branch:
+        description: "The branch name to deploy"
+        required: true
+        type: string
+    secrets:
+      SSH_PRIVATE_KEY:
+        required: true
+      SSH_HOST:
+        required: true
+      SSH_USERNAME:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            project="${{ inputs.project }}"
+            branch="${{ inputs.branch }}"
+            base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$project"
+            dir="$base/$branch"
+            tmp_dir="$base/${branch}_tmp"
+            config_src="/root/$project.$branch.config.inc.php"
+
+            # Clean up any previous temp dir to avoid conflicts
+            rm -rf "$tmp_dir"
+
+            # Clone fresh into temp dir
+            git clone \
+              --depth 1 \
+              --single-branch \
+              --branch main \
+              --recurse-submodules \
+              --shallow-submodules \
+              --filter=blob:none \
+              https://github.com/pkp/$project.git "$tmp_dir"
+
+            cd "$tmp_dir"
+
+            # Install dependencies
+            composer --working-dir=lib/pkp install
+            composer --working-dir=plugins/generic/citationStyleLanguage install
+            composer --working-dir=plugins/paymethod/paypal install
+
+            npm install
+            npm run build
+
+            # Prepare persistent directories
+            mkdir files
+            # public exists from git clone; we'll handle it below
+
+            if [ -d "$dir" ]; then
+              # Move files (replace entirely, as it's user-generated)
+              rm -rf files
+              mv "$dir/files" files
+
+              # Move public (replace git version with old version to preserve uploads)
+              rm -rf public
+              mv "$dir/public" public
+
+              # Remove the now-partially-emptied old dir
+              rm -rf "$dir"
+            fi
+
+            # Copy config
+            cp "$config_src" ./config.inc.php
+
+            # Move the temp dir to the live dir
+            mv "$tmp_dir" "$dir"
+
+            # Set permissions
+            chown -R www-data:www-data "$dir"/cache
+            chown -R www-data:www-data "$dir"/files
+            chown -R www-data:www-data "$dir"/public
+            chmod -R 775 "$dir"/cache
+            chmod -R 775 "$dir"/files
+            chmod -R 775 "$dir"/public
