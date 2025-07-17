@@ -26,39 +26,39 @@ jobs:
       SSH_HOST: ${{ secrets.SSH_HOST }} # Map secret to env for conditional check
     steps:
       - name: Detect base branch
-          id: detect-base
-          uses: actions/github-script@v7
-          with:
-            result-encoding: string
-            script: |
-              const possibleBases = ['stable-3_3_0', 'stable-3_4_0', 'stable-3_5_0', 'main'];
-              if (possibleBases.includes('${{ inputs.branch }}')) {
-                return '${{ inputs.branch }}';
-              }
-              let minAhead = Infinity;
-              let selectedBase = null;
-              for (const base of possibleBases) {
-                try {
-                  const response = await github.rest.repos.compareCommits({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    base,
-                    head: '${{ inputs.branch }}'
-                  });
-                  const { status, ahead_by, behind_by } = response.data;
-                  if (status === 'ahead' && behind_by === 0 && ahead_by < minAhead) {
-                    minAhead = ahead_by;
-                    selectedBase = base;
-                  }
-                } catch (e) {
-                  // Skip if error (e.g., base does not exist)
+        id: detect-base
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const possibleBases = ['stable-3_3_0', 'stable-3_4_0', 'stable-3_5_0', 'main'];
+            if (possibleBases.includes('${{ inputs.branch }}')) {
+              return '${{ inputs.branch }}';
+            }
+            let minAhead = Infinity;
+            let selectedBase = null;
+            for (const base of possibleBases) {
+              try {
+                const response = await github.rest.repos.compareCommits({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  base,
+                  head: '${{ inputs.branch }}'
+                });
+                const { status, ahead_by, behind_by } = response.data;
+                if (status === 'ahead' && behind_by === 0 && ahead_by < minAhead) {
+                  minAhead = ahead_by;
+                  selectedBase = base;
                 }
+              } catch (e) {
+                // Skip if error (e.g., base does not exist)
               }
-              if (selectedBase) {
-                return selectedBase;
-              } else {
-                throw new Error('Could not detect base branch for ${{ inputs.branch }}');
-              }
+            }
+            if (selectedBase) {
+              return selectedBase;
+            } else {
+              throw new Error('Could not detect base branch for ${{ inputs.branch }}');
+            }
       - name: Deploy via SSH
         if: ${{ env.SSH_HOST != '' }} # Skip if secret is empty/missing
         uses: appleboy/ssh-action@v1.0.3
