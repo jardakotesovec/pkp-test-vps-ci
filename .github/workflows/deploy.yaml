@@ -51,7 +51,7 @@ jobs:
               --recurse-submodules \
               --shallow-submodules \
               --filter=blob:none \
-              https://github.com/pkp/$project.git "$tmp_dir"
+              https://github.com/${{ github.repository_owner }}/$project.git "$tmp_dir"
 
             cd "$tmp_dir"
 
