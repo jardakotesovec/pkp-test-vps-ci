@@ -47,7 +47,7 @@ jobs:
             git clone \
               --depth 1 \
               --single-branch \
-              --branch main \
+              --branch "${{ inputs.branch }}" \
               --recurse-submodules \
               --shallow-submodules \
               --filter=blob:none \
