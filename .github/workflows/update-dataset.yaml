@@ -1,0 +1,82 @@
+name: Update PKP Dataset on VPS
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: "The PKP project name (e.g., ojs, omp, ops)"
+        required: true
+        type: string
+      branch:
+        description: "The branch name to update dataset for"
+        required: true
+        type: string
+    secrets:
+      SSH_PRIVATE_KEY:
+        required: true
+      SSH_HOST:
+        required: true
+      SSH_USERNAME:
+        required: true
+
+jobs:
+  update-dataset:
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }} # Map secret to env for conditional check
+    steps:
+      - name: Update Dataset via SSH
+        if: ${{ env.SSH_HOST != '' }} # Skip if secret is empty/missing
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            project="${{ inputs.project }}"
+            branch="${{ inputs.branch }}"
+            base="/var/www/91.99.202.113.sslip.io/$project"
+            app_dir="$base/$branch"
+            tmp_dir="/tmp/datasets_${project}_${branch}"
+            dataset_path="$tmp_dir"
+
+            # Clean up any previous temp dir
+            rm -rf "$tmp_dir"
+
+            # Clone sparse dataset
+            git clone \
+              --depth 1 \
+              --filter=blob:none \
+              --sparse \
+              https://github.com/pkp/datasets.git "$tmp_dir"
+
+            cd "$tmp_dir"
+            git sparse-checkout set $project/$branch/mysql
+
+            # Extract MySQL root password
+            PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
+
+            # Database name
+            db_name="${project}_${branch}"
+
+            # Drop and recreate database
+            mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+
+            # Load dataset into database
+            mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$dataset_path/$project/$branch/mysql/database.sql"
+
+            # Copy files and public from dataset (replace existing)
+            rm -rf "$app_dir/files"
+            cp -r "$dataset_path/$project/$branch/mysql/files" "$app_dir/files"
+
+            rm -rf "$app_dir/public"
+            cp -r "$dataset_path/$project/$branch/mysql/public" "$app_dir/public"
+
+            # Set permissions
+            chown -R www-data:www-data "$app_dir"/files
+            chown -R www-data:www-data "$app_dir"/public
+            chmod -R 775 "$app_dir"/files
+            chmod -R 775 "$app_dir"/public
+
+            # Clean up temp dir
+            rm -rf "$tmp_dir"
