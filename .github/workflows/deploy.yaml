@@ -73,7 +73,6 @@ jobs:
             base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$project"
             dir="$base/$branch"
             tmp_dir="$base/${branch}_tmp"
-            config_src="/root/$project.$base_branch.config.inc.php"
             # Clean up any previous temp dir to avoid conflicts
             rm -rf "$tmp_dir"
 
@@ -88,6 +87,20 @@ jobs:
               https://github.com/${{ github.repository_owner }}/$project.git "$tmp_dir"
 
             cd "$tmp_dir"
+
+            # Copy template and update config
+            cp config.TEMPLATE.inc.php config.inc.php
+
+            # Extract MySQL root password
+            PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
+
+            # Update database settings in [database] section
+            sed -i '/^\[database\]$/,/^\[/ s/^username = .*/username = root/' config.inc.php
+            sed -i '/^\[database\]$/,/^\[/ s/^password = .*/password = "'"$PASSWORD"'"/' config.inc.php
+            sed -i '/^\[database\]$/,/^\[/ s/^name = .*/name = '"${project}_${base_branch}"'/' config.inc.php
+
+            # Generate app key
+            php lib/pkp/tools/appKey.php generate
 
             # Install dependencies
             composer --working-dir=lib/pkp install
