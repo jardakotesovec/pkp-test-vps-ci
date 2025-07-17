@@ -99,13 +99,16 @@ jobs:
             sed -i '/^\[database\]$/,/^\[/ s/^password = .*/password = "'"$PASSWORD"'"/' config.inc.php
             sed -i '/^\[database\]$/,/^\[/ s/^name = .*/name = '"${project}_${base_branch}"'/' config.inc.php
 
-            # Generate app key
-            php lib/pkp/tools/appKey.php generate
+            # Update installed flag in [general] section
+            sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
 
             # Install dependencies
             composer --working-dir=lib/pkp install
             composer --working-dir=plugins/generic/citationStyleLanguage install
             composer --working-dir=plugins/paymethod/paypal install
+
+            # Generate app key
+            php lib/pkp/tools/appKey.php generate
 
             npm install
             npm run build
