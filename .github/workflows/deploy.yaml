@@ -11,6 +11,10 @@ on:
         description: "The branch name to deploy"
         required: true
         type: string
+      pr_number:
+        description: "PR Number for fork deployments (optional)"
+        required: false
+        type: number
     secrets:
       SSH_PRIVATE_KEY:
         required: true
@@ -26,6 +30,7 @@ jobs:
       SSH_HOST: ${{ secrets.SSH_HOST }} # Map secret to env for conditional check
     steps:
       - name: Detect base branch
+        if: ${{ !inputs.pr_number }}
         id: detect-base
         uses: actions/github-script@v7
         with:
@@ -58,7 +63,23 @@ jobs:
               return selectedBase;
             } else {
               throw new Error('Could not detect base branch for ${{ inputs.branch }}');
-            }
+      - name: Fetch PR details
+        if: ${{ inputs.pr_number }}
+        id: fetch-pr
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: ${{ inputs.pr_number }}
+            });
+            return JSON.stringify({
+              head_owner: pr.data.head.repo.owner.login,
+              head_branch: pr.data.head.ref,
+              base_branch: pr.data.base.ref
+            });
       - name: Deploy via SSH
         if: ${{ env.SSH_HOST != '' }} # Skip if secret is empty/missing
         uses: appleboy/ssh-action@v1.0.3
@@ -68,11 +89,14 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             project="${{ inputs.project }}"
-            branch="${{ inputs.branch }}"
-            base_branch="${{ steps.detect-base.outputs.result }}"
+            branch="${{ inputs.pr_number && format('pr-{0}', inputs.pr_number) || inputs.branch }}"
+            base_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).base_branch || steps.detect-base.outputs.result }}"
+            clone_owner="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).head_owner || github.repository_owner }}"
+            clone_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).head_branch || inputs.branch }}"
             base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$project"
             dir="$base/$branch"
             tmp_dir="$base/${branch}_tmp"
+
             # Clean up any previous temp dir to avoid conflicts
             rm -rf "$tmp_dir"
 
@@ -80,11 +104,11 @@ jobs:
             git clone \
               --depth 1 \
               --single-branch \
-              --branch "${{ inputs.branch }}" \
+              --branch "$clone_branch" \
               --recurse-submodules \
               --shallow-submodules \
               --filter=blob:none \
-              https://github.com/${{ github.repository_owner }}/$project.git "$tmp_dir"
+              https://github.com/$clone_owner/$project.git "$tmp_dir"
 
             cd "$tmp_dir"
 
@@ -129,9 +153,6 @@ jobs:
               # Remove the now-partially-emptied old dir
               rm -rf "$dir"
             fi
-
-            # Copy config
-            cp "$config_src" ./config.inc.php
 
             # Move the temp dir to the live dir
             mv "$tmp_dir" "$dir"
