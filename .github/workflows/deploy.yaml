@@ -160,6 +160,9 @@ jobs:
             end=$(date +%s)
             echo "Duration for npm run build: $((end - start)) seconds"
 
+            # Clean up unnecessary directories to reduce copy size/time
+            rm -rf .git node_modules
+
             # Loop over suffixes to deploy each copy
             for suffix in "${suffixes[@]}"; do
               if [ -z "$suffix" ]; then
@@ -197,11 +200,8 @@ jobs:
 
               sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
 
-              start=$(date +%s)
               # Generate app key (instance-specific, after config setup)
               php lib/pkp/tools/appKey.php generate
-              end=$(date +%s)
-              echo "Duration for appKey generate (suffix: $suffix): $((end - start)) seconds"
 
               # Prepare persistent directories
               mkdir -p files public
