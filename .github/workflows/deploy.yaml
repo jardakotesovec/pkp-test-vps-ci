@@ -63,6 +63,7 @@ jobs:
               return selectedBase;
             } else {
               throw new Error('Could not detect base branch for ${{ inputs.branch }}');
+            }
       - name: Fetch PR details
         if: ${{ inputs.pr_number }}
         id: fetch-pr
