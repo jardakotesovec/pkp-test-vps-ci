@@ -139,8 +139,6 @@ jobs:
             composer --working-dir=plugins/generic/citationStyleLanguage install
             composer --working-dir=plugins/paymethod/paypal install
 
-            # Generate app key
-            php lib/pkp/tools/appKey.php generate
 
             npm install
             npm run build
@@ -191,6 +189,10 @@ jobs:
 
               cd "$tmp_dir"
             fi
+
+            # Generate app key
+            php lib/pkp/tools/appKey.php generate
+
 
             # Move the temp dir to the live dir
             mv "$tmp_dir" "$dir"
