@@ -36,8 +36,20 @@ jobs:
             project="${{ inputs.project }}"
             base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$project"
             dir="$base/pr-${{ inputs.pr_number }}"
+            db_name="${project}_pr_${{ inputs.pr_number }}"
 
-            # Check if directory exists and remove it
+            # Extract MySQL root password
+            PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
+
+            # Drop DB if exists
+            if mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "SHOW DATABASES LIKE '$db_name'" | grep -q "$db_name"; then
+              mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE $db_name;"
+              echo "Dropped database $db_name"
+            else
+              echo "No database found for $db_name; nothing to drop"
+            fi
+
+            # Remove directory if exists
             if [ -d "$dir" ]; then
               rm -rf "$dir"
               echo "Cleaned up $dir"

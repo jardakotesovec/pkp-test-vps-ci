@@ -14,7 +14,7 @@ on:
       pr_number:
         description: "PR Number for fork deployments (optional)"
         required: false
-        type: string # Changed to string to avoid validation issues with passed values
+        type: string
     secrets:
       SSH_PRIVATE_KEY:
         required: true
@@ -74,7 +74,7 @@ jobs:
             const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: Number('${{ inputs.pr_number }}')  // Cast to number for API
+              pull_number: Number('${{ inputs.pr_number }}')
             });
             return JSON.stringify({
               head_owner: pr.data.head.repo.owner.login,
@@ -97,6 +97,7 @@ jobs:
             base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$project"
             dir="$base/$branch"
             tmp_dir="$base/${branch}_tmp"
+            db_name="${{ inputs.pr_number && format('{0}_pr_{1}', project, inputs.pr_number) || format('{0}_{1}', project, base_branch) }}"
 
             # Clean up any previous temp dir to avoid conflicts
             rm -rf "$tmp_dir"
@@ -122,7 +123,7 @@ jobs:
             # Update database settings in [database] section
             sed -i '/^\[database\]$/,/^\[/ s/^username = .*/username = root/' config.inc.php
             sed -i '/^\[database\]$/,/^\[/ s/^password = .*/password = "'"$PASSWORD"'"/' config.inc.php
-            sed -i '/^\[database\]$/,/^\[/ s/^name = .*/name = '"${project}_${base_branch}"'/' config.inc.php
+            sed -i '/^\[database\]$/,/^\[/ s/^name = .*/name = '"$db_name"'/' config.inc.php
 
             # Update installed flag in [general] section
             sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
@@ -153,6 +154,36 @@ jobs:
 
               # Remove the now-partially-emptied old dir
               rm -rf "$dir"
+            fi
+
+            # For PR deployments, create/load fresh DB and copy dataset files/public
+            if [ -n "${{ inputs.pr_number }}" ]; then
+              dataset_tmp="/tmp/datasets_${project}_pr_${{ inputs.pr_number }}"
+              rm -rf "$dataset_tmp"
+
+              git clone \
+                --depth 1 \
+                --filter=blob:none \
+                --sparse \
+                https://github.com/pkp/datasets.git "$dataset_tmp"
+
+              cd "$dataset_tmp"
+              git sparse-checkout set $project/$base_branch/mysql
+
+              mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+
+              mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$dataset_tmp/$project/$base_branch/mysql/database.sql"
+
+              rm -rf files public
+              cp -r "$dataset_tmp/$project/$base_branch/mysql/files" files
+              cp -r "$dataset_tmp/$project/$base_branch/mysql/public" public
+
+              chown -R deploy:www-data files public
+              chmod -R 775 files public
+
+              rm -rf "$dataset_tmp"
+
+              cd "$tmp_dir"
             fi
 
             # Move the temp dir to the live dir
