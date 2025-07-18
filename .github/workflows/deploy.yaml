@@ -97,7 +97,13 @@ jobs:
             base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$project"
             dir="$base/$branch"
             tmp_dir="$base/${branch}_tmp"
-            db_name="${{ inputs.pr_number && format('{0}_pr_{1}', project, inputs.pr_number) || format('{0}_{1}', project, base_branch) }}"
+
+            # Compute db_name in bash (after variables are set)
+            if [ -n "${{ inputs.pr_number }}" ]; then
+              db_name="${project}_pr_${{ inputs.pr_number }}"
+            else
+              db_name="${project}_${base_branch}"
+            fi
 
             # Clean up any previous temp dir to avoid conflicts
             rm -rf "$tmp_dir"
