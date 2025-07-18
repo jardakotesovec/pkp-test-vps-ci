@@ -15,6 +15,10 @@ on:
         description: "PR Number for fork deployments (optional)"
         required: false
         type: string
+      copies:
+        description: "Comma-separated suffixes for additional branch copies (e.g., 'qa,hosting')"
+        required: false
+        type: string
     secrets:
       SSH_PRIVATE_KEY:
         required: true
@@ -94,21 +98,28 @@ jobs:
             base_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).base_branch || steps.detect-base.outputs.result }}"
             clone_owner="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).head_owner || github.repository_owner }}"
             clone_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).head_branch || inputs.branch }}"
-            base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$project"
-            dir="$base/$branch"
-            tmp_dir="$base/${branch}_tmp"
+            copies="${{ inputs.copies }}"
 
-            # Compute db_name in bash (after variables are set)
+            # Determine if PR deployment
+            is_pr=0
             if [ -n "${{ inputs.pr_number }}" ]; then
-              db_name="${project}_pr_${{ inputs.pr_number }}"
-            else
-              db_name="${project}_${base_branch}"
+              is_pr=1
             fi
 
-            # Clean up any previous temp dir to avoid conflicts
-            rm -rf "$tmp_dir"
+            # Set suffixes (default empty for main copy; add others for branches if copies provided)
+            suffixes=("")
+            if [ $is_pr -eq 0 ] && [ -n "$copies" ]; then
+              IFS=',' read -r -a additional <<< "$copies"
+              suffixes+=("${additional[@]}")
+            fi
 
-            # Clone fresh into temp dir
+            # Extract MySQL root password (once)
+            PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
+
+            # Build once for efficiency (composer and npm)
+            build_dir="/tmp/build_${project}_${branch//[^a-zA-Z0-9]/_}"
+            rm -rf "$build_dir"
+
             git clone \
               --depth 1 \
               --single-branch \
@@ -116,87 +127,103 @@ jobs:
               --recurse-submodules \
               --shallow-submodules \
               --filter=blob:none \
-              https://github.com/$clone_owner/$project.git "$tmp_dir"
+              https://github.com/$clone_owner/$project.git "$build_dir"
 
-            cd "$tmp_dir"
+            cd "$build_dir"
 
-            # Copy template and update config
-            cp config.TEMPLATE.inc.php config.inc.php
-
-            # Extract MySQL root password
-            PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
-
-            # Update database settings in [database] section
-            sed -i '/^\[database\]$/,/^\[/ s/^username = .*/username = root/' config.inc.php
-            sed -i '/^\[database\]$/,/^\[/ s/^password = .*/password = "'"$PASSWORD"'"/' config.inc.php
-            sed -i '/^\[database\]$/,/^\[/ s/^name = .*/name = '"$db_name"'/' config.inc.php
-
-            # Update installed flag in [general] section
-            sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
-
-            # Install dependencies
+            # Install dependencies (no config needed yet)
             composer --working-dir=lib/pkp install
             composer --working-dir=plugins/generic/citationStyleLanguage install
             composer --working-dir=plugins/paymethod/paypal install
 
-
             npm install
             npm run build
 
-            # Prepare persistent directories
-            mkdir files
-            # public exists from git clone; we'll handle it below
+            # Loop over suffixes to deploy each copy
+            for suffix in "${suffixes[@]}"; do
+              if [ -z "$suffix" ]; then
+                variant="$project"
+                db_variant="$base_branch"
+              else
+                variant="${project}-${suffix}"
+                db_variant="${suffix}_${base_branch}"
+              fi
 
-            if [ -d "$dir" ]; then
-              # Move files (replace entirely, as it's user-generated)
-              rm -rf files
-              mv "$dir/files" files
+              db_name="${project}_${db_variant}"
+              base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$variant"
+              dir="$base/$branch"
+              tmp_dir="$base/${branch}_tmp"
 
-              # Move public (replace git version with old version to preserve uploads)
-              rm -rf public
-              mv "$dir/public" public
+              # Clean up previous temp dir
+              rm -rf "$tmp_dir"
 
-              # Remove the now-partially-emptied old dir
-              rm -rf "$dir"
-            fi
-
-            # For PR deployments, create/load fresh DB and copy dataset files/public
-            if [ -n "${{ inputs.pr_number }}" ]; then
-              dataset_tmp="/tmp/datasets_${project}_pr_${{ inputs.pr_number }}"
-              rm -rf "$dataset_tmp"
-
-              git clone \
-                --depth 1 \
-                --filter=blob:none \
-                --sparse \
-                https://github.com/pkp/datasets.git "$dataset_tmp"
-
-              cd "$dataset_tmp"
-              git sparse-checkout set $project/$base_branch/mysql
-
-              mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
-
-              mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$dataset_tmp/$project/$base_branch/mysql/database.sql"
-
-              rm -rf files public
-              cp -r "$dataset_tmp/$project/$base_branch/mysql/files" files
-              cp -r "$dataset_tmp/$project/$base_branch/mysql/public" public
-
-              chown -R deploy:www-data files public
-              chmod -R 775 files public
-
-              rm -rf "$dataset_tmp"
-
+              # Copy built dir to temp
+              cp -r "$build_dir" "$tmp_dir"
               cd "$tmp_dir"
-            fi
 
-            # Generate app key
-            php lib/pkp/tools/appKey.php generate
+              # Copy and update config (per copy)
+              cp config.TEMPLATE.inc.php config.inc.php
 
+              sed -i '/^\[database\]$/,/^\[/ s/^username = .*/username = root/' config.inc.php
+              sed -i '/^\[database\]$/,/^\[/ s/^password = .*/password = "'"$PASSWORD"'"/' config.inc.php
+              sed -i '/^\[database\]$/,/^\[/ s/^name = .*/name = '"$db_name"'/' config.inc.php
 
-            # Move the temp dir to the live dir
-            mv "$tmp_dir" "$dir"
+              sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
 
-            # Set permissions
-            chown -R deploy:www-data "$dir"
-            chmod -R 775 "$dir"
+              # Generate app key (instance-specific, after config setup)
+              php lib/pkp/tools/appKey.php generate
+
+              # Prepare persistent directories
+              mkdir -p files public
+
+              if [ $is_pr -eq 1 ]; then
+                dataset_tmp="/tmp/datasets_${variant}_${branch//[^a-zA-Z0-9]/_}"
+                rm -rf "$dataset_tmp"
+
+                git clone \
+                  --depth 1 \
+                  --filter=blob:none \
+                  --sparse \
+                  https://github.com/pkp/datasets.git "$dataset_tmp"
+
+                cd "$dataset_tmp"
+                git sparse-checkout set $project/$base_branch/mysql
+
+                # Drop DB if exists, create fresh
+                mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+
+                # Load SQL
+                mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$dataset_tmp/$project/$base_branch/mysql/database.sql"
+
+                # Reset and copy fresh files/public from dataset
+                rm -rf files public
+                cp -r "$dataset_tmp/$project/$base_branch/mysql/files" files
+                cp -r "$dataset_tmp/$project/$base_branch/mysql/public" public
+
+                chown -R deploy:www-data files public
+                chmod -R 775 files public
+
+                rm -rf "$dataset_tmp"
+
+                cd "$tmp_dir"
+              else
+                # For branches, preserve files/public if dir exists
+                if [ -d "$dir" ]; then
+                  rm -rf files
+                  mv "$dir/files" files
+                  rm -rf public
+                  mv "$dir/public" public
+                fi
+              fi
+
+              # Now minimize downtime: delete old dir (if any) and move temp to live
+              rm -rf "$dir"
+              mv "$tmp_dir" "$dir"
+
+              # Set permissions on entire dir
+              chown -R deploy:www-data "$dir"
+              chmod -R 775 "$dir"
+            done
+
+            # Clean up build dir
+            rm -rf "$build_dir"
