@@ -14,7 +14,7 @@ on:
       pr_number:
         description: "PR Number for fork deployments (optional)"
         required: false
-        type: number
+        type: string # Changed to string to avoid validation issues with passed values
     secrets:
       SSH_PRIVATE_KEY:
         required: true
@@ -73,7 +73,7 @@ jobs:
             const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: ${{ inputs.pr_number }}
+              pull_number: Number('${{ inputs.pr_number }}')  // Cast to number for API
             });
             return JSON.stringify({
               head_owner: pr.data.head.repo.owner.login,
