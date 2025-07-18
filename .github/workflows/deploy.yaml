@@ -9,10 +9,14 @@ on:
         type: string
       branch:
         description: "The branch name to deploy"
-        required: true
+        required: false
         type: string
       pr_number:
         description: "PR Number for fork deployments (optional)"
+        required: false
+        type: string
+      tag:
+        description: "Tag name to deploy from main PKP repo (e.g., 'ojs-3_5_0-1') (optional, overrides branch/pr_number)"
         required: false
         type: string
       copies:
@@ -33,41 +37,6 @@ jobs:
     env:
       SSH_HOST: ${{ secrets.SSH_HOST }} # Map secret to env for conditional check
     steps:
-      - name: Detect base branch
-        if: ${{ !inputs.pr_number }}
-        id: detect-base
-        uses: actions/github-script@v7
-        with:
-          result-encoding: string
-          script: |
-            const possibleBases = ['stable-3_3_0', 'stable-3_4_0', 'stable-3_5_0', 'main'];
-            if (possibleBases.includes('${{ inputs.branch }}')) {
-              return '${{ inputs.branch }}';
-            }
-            let minAhead = Infinity;
-            let selectedBase = null;
-            for (const base of possibleBases) {
-              try {
-                const response = await github.rest.repos.compareCommits({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  base,
-                  head: '${{ inputs.branch }}'
-                });
-                const { status, ahead_by, behind_by } = response.data;
-                if (status === 'ahead' && behind_by === 0 && ahead_by < minAhead) {
-                  minAhead = ahead_by;
-                  selectedBase = base;
-                }
-              } catch (e) {
-                // Skip if error (e.g., base does not exist)
-              }
-            }
-            if (selectedBase) {
-              return selectedBase;
-            } else {
-              throw new Error('Could not detect base branch for ${{ inputs.branch }}');
-            }
       - name: Fetch PR details
         if: ${{ inputs.pr_number }}
         id: fetch-pr
@@ -94,21 +63,38 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             project="${{ inputs.project }}"
-            branch="${{ inputs.pr_number && format('pr-{0}', inputs.pr_number) || inputs.branch }}"
-            base_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).base_branch || steps.detect-base.outputs.result }}"
-            clone_owner="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).head_owner || github.repository_owner }}"
-            clone_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).head_branch || inputs.branch }}"
-            copies="${{ inputs.copies }}"
+            tag="${{ inputs.tag }}"
+            pr_number="${{ inputs.pr_number }}"
+            input_branch="${{ inputs.branch }}"  # Save original branch input
 
-            # Determine if PR deployment
-            is_pr=0
-            if [ -n "${{ inputs.pr_number }}" ]; then
-              is_pr=1
+            if [ -n "$tag" ]; then
+              clone_owner="pkp"
+              clone_branch="$tag"
+              dataset_branch="$tag"  # Use tag for dataset path
+              base_branch="$tag"  # Use tag for DB naming
+              branch="$tag"  # Use tag as directory name
+              do_import=1  # Import dataset like PR
+            elif [ -n "$pr_number" ]; then
+              branch="pr-$pr_number"
+              base_branch="${{ fromJSON(steps.fetch-pr.outputs.result).base_branch }}"
+              dataset_branch="$base_branch"  # Use base_branch for dataset
+              clone_owner="${{ fromJSON(steps.fetch-pr.outputs.result).head_owner }}"
+              clone_branch="${{ fromJSON(steps.fetch-pr.outputs.result).head_branch }}"
+              do_import=1  # Import dataset
+            else
+              branch="$input_branch"
+              base_branch="$input_branch"  # Assume stable branch
+              dataset_branch="$base_branch"  # Use branch for dataset
+              clone_owner="${{ github.repository_owner }}"
+              clone_branch="$input_branch"
+              do_import=0  # No import for regular branches
             fi
 
-            # Set suffixes (default empty for main copy; add others for branches if copies provided)
+            copies="${{ inputs.copies }}"
+
+            # Set suffixes (default empty for main copy; add others if copies provided and not PR/tag)
             suffixes=("")
-            if [ $is_pr -eq 0 ] && [ -n "$copies" ]; then
+            if [ $do_import -eq 0 ] && [ -n "$copies" ]; then
               IFS=',' read -r -a additional <<< "$copies"
               suffixes+=("${additional[@]}")
             fi
@@ -120,7 +106,6 @@ jobs:
             build_dir="/tmp/build_${project}_${branch//[^a-zA-Z0-9]/_}"
             rm -rf "$build_dir"
 
-            start=$(date +%s)
             git clone \
               --depth 1 \
               --single-branch \
@@ -129,36 +114,16 @@ jobs:
               --shallow-submodules \
               --filter=blob:none \
               https://github.com/$clone_owner/$project.git "$build_dir"
-            end=$(date +%s)
-            echo "Duration for git clone build_dir: $((end - start)) seconds"
 
             cd "$build_dir"
 
             # Install dependencies (no config needed yet)
-            start=$(date +%s)
             composer --working-dir=lib/pkp install
-            end=$(date +%s)
-            echo "Duration for composer install lib/pkp: $((end - start)) seconds"
-
-            start=$(date +%s)
             composer --working-dir=plugins/generic/citationStyleLanguage install
-            end=$(date +%s)
-            echo "Duration for composer install citationStyleLanguage: $((end - start)) seconds"
-
-            start=$(date +%s)
             composer --working-dir=plugins/paymethod/paypal install
-            end=$(date +%s)
-            echo "Duration for composer install paypal: $((end - start)) seconds"
 
-            start=$(date +%s)
             npm install
-            end=$(date +%s)
-            echo "Duration for npm install: $((end - start)) seconds"
-
-            start=$(date +%s)
             npm run build
-            end=$(date +%s)
-            echo "Duration for npm run build: $((end - start)) seconds"
 
             # Clean up unnecessary directories to reduce copy size/time
             rm -rf .git node_modules
@@ -184,11 +149,7 @@ jobs:
               # Clean up previous temp dir
               rm -rf "$tmp_dir"
 
-              start=$(date +%s)
               cp -r "$build_dir" "$tmp_dir"
-              end=$(date +%s)
-              echo "Duration for cp build_dir to tmp_dir (suffix: $suffix): $((end - start)) seconds"
-
               cd "$tmp_dir"
 
               # Copy and update config (per copy)
@@ -206,40 +167,29 @@ jobs:
               # Prepare persistent directories
               mkdir -p files public
 
-              if [ $is_pr -eq 1 ]; then
+              if [ $do_import -eq 1 ]; then
                 dataset_tmp="/tmp/datasets_${variant}_${branch//[^a-zA-Z0-9]/_}"
                 rm -rf "$dataset_tmp"
 
-                start=$(date +%s)
                 git clone \
                   --depth 1 \
                   --filter=blob:none \
                   --sparse \
                   https://github.com/pkp/datasets.git "$dataset_tmp"
-                end=$(date +%s)
-                echo "Duration for git clone dataset (suffix: $suffix): $((end - start)) seconds"
 
                 cd "$dataset_tmp"
-                git sparse-checkout set $project/$base_branch/mysql
+                git sparse-checkout set $project/$dataset_branch/mysql
 
-                start=$(date +%s)
+                # Drop DB if exists, create fresh
                 mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
-                end=$(date +%s)
-                echo "Duration for mysql drop/create DB (suffix: $suffix): $((end - start)) seconds"
 
-                start=$(date +%s)
-                mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$dataset_tmp/$project/$base_branch/mysql/database.sql"
-                end=$(date +%s)
-                echo "Duration for mysql load SQL (suffix: $suffix): $((end - start)) seconds"
+                # Load SQL
+                mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$dataset_tmp/$project/$dataset_branch/mysql/database.sql"
 
                 # Reset and copy fresh files/public from dataset
                 rm -rf files public
-
-                start=$(date +%s)
-                cp -r "$dataset_tmp/$project/$base_branch/mysql/files" files
-                cp -r "$dataset_tmp/$project/$base_branch/mysql/public" public
-                end=$(date +%s)
-                echo "Duration for cp files/public from dataset (suffix: $suffix): $((end - start)) seconds"
+                cp -r "$dataset_tmp/$project/$dataset_branch/mysql/files" files
+                cp -r "$dataset_tmp/$project/$dataset_branch/mysql/public" public
 
                 chown -R deploy:www-data files public
                 chmod -R 775 files public
@@ -251,12 +201,9 @@ jobs:
                 # For branches, preserve files/public if dir exists
                 if [ -d "$dir" ]; then
                   rm -rf files
-                  start=$(date +%s)
                   mv "$dir/files" files
                   rm -rf public
                   mv "$dir/public" public
-                  end=$(date +%s)
-                  echo "Duration for mv existing files/public (suffix: $suffix): $((end - start)) seconds"
                 fi
               fi
 
@@ -264,11 +211,9 @@ jobs:
               rm -rf "$dir"
               mv "$tmp_dir" "$dir"
 
-              start=$(date +%s)
+              # Set permissions on entire dir
               chown -R deploy:www-data "$dir"
               chmod -R 775 "$dir"
-              end=$(date +%s)
-              echo "Duration for chown/chmod on dir (suffix: $suffix): $((end - start)) seconds"
             done
 
             # Clean up build dir
