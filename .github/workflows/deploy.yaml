@@ -106,16 +106,11 @@ jobs:
               is_pr=1
             fi
 
-            # Set suffixes
-            suffixes=()
-            if [ $is_pr -eq 1 ]; then
-              suffixes=("")
-            else
-              if [ -n "$copies" ]; then
-                IFS=',' read -r -a suffixes <<< "$copies"
-              else
-                suffixes=("")
-              fi
+            # Set suffixes (default empty for main copy; add others for branches if copies provided)
+            suffixes=("")
+            if [ $is_pr -eq 0 ] && [ -n "$copies" ]; then
+              IFS=',' read -r -a additional <<< "$copies"
+              suffixes+=("${additional[@]}")
             fi
 
             # Extract MySQL root password (once)

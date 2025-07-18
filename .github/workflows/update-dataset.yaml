@@ -11,6 +11,10 @@ on:
         description: "The branch name to update dataset for"
         required: true
         type: string
+      copies:
+        description: "Comma-separated list of copies to update (e.g., 'default,qa,hosting'); 'default' for the one without suffix"
+        required: true
+        type: string
     secrets:
       SSH_PRIVATE_KEY:
         required: true
@@ -35,15 +39,18 @@ jobs:
           script: |
             project="${{ inputs.project }}"
             branch="${{ inputs.branch }}"
-            base="/var/www/91.99.202.113.sslip.io/$project"
-            app_dir="$base/$branch"
-            tmp_dir="/tmp/datasets_${project}_${branch}"
-            dataset_path="$tmp_dir"
+            copies="${{ inputs.copies }}"
 
-            # Clean up any previous temp dir
+            # Set suffixes from required copies input
+            IFS=',' read -r -a suffixes <<< "$copies"
+
+            # Extract MySQL root password (once)
+            PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
+
+            # Clone sparse dataset once
+            tmp_dir="/tmp/datasets_${project}_${branch//[^a-zA-Z0-9]/_}"
             rm -rf "$tmp_dir"
 
-            # Clone sparse dataset
             git clone \
               --depth 1 \
               --filter=blob:none \
@@ -53,30 +60,37 @@ jobs:
             cd "$tmp_dir"
             git sparse-checkout set $project/$branch/mysql
 
-            # Extract MySQL root password
-            PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
+            dataset_path="$tmp_dir/$project/$branch/mysql"
 
-            # Database name
-            db_name="${project}_${branch}"
+            # Loop over suffixes to update each copy
+            for suffix in "${suffixes[@]}"; do
+              if [ "$suffix" == "default" ]; then
+                variant="$project"
+                db_variant="$branch"
+              else
+                variant="${project}-${suffix}"
+                db_variant="${suffix}_${branch}"
+              fi
 
-            # Drop and recreate database
-            mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+              db_name="${project}_${db_variant}"
+              base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$variant"
+              app_dir="$base/$branch"
 
-            # Load dataset into database
-            mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$dataset_path/$project/$branch/mysql/database.sql"
+              # Drop and recreate database
+              mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
 
-            # Copy files and public from dataset (replace existing)
-            rm -rf "$app_dir/files"
-            cp -r "$dataset_path/$project/$branch/mysql/files" "$app_dir/files"
+              # Load dataset into database
+              mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$dataset_path/database.sql"
 
-            rm -rf "$app_dir/public"
-            cp -r "$dataset_path/$project/$branch/mysql/public" "$app_dir/public"
+              # Copy files and public from dataset (replace existing)
+              rm -rf "$app_dir/files" "$app_dir/public"
+              cp -r "$dataset_path/files" "$app_dir/files"
+              cp -r "$dataset_path/public" "$app_dir/public"
 
-            # Set permissions
-            chown -R www-data:www-data "$app_dir"/files
-            chown -R www-data:www-data "$app_dir"/public
-            chmod -R 775 "$app_dir"/files
-            chmod -R 775 "$app_dir"/public
+              # Set permissions
+              chown -R www-data:www-data "$app_dir/files" "$app_dir/public"
+              chmod -R 775 "$app_dir/files" "$app_dir/public"
+            done
 
             # Clean up temp dir
             rm -rf "$tmp_dir"
