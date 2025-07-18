@@ -1,0 +1,46 @@
+name: Cleanup PR Deployment on VPS
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: "The PKP project name (e.g., ojs, omp, ops)"
+        required: true
+        type: string
+      pr_number:
+        description: "PR Number to cleanup"
+        required: true
+        type: string
+    secrets:
+      SSH_PRIVATE_KEY:
+        required: true
+      SSH_HOST:
+        required: true
+      SSH_USERNAME:
+        required: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }} # Map secret to env for conditional check
+    steps:
+      - name: Cleanup via SSH
+        if: ${{ env.SSH_HOST != '' }} # Skip if secret is empty/missing
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            project="${{ inputs.project }}"
+            base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$project"
+            dir="$base/pr-${{ inputs.pr_number }}"
+
+            # Check if directory exists and remove it
+            if [ -d "$dir" ]; then
+              rm -rf "$dir"
+              echo "Cleaned up $dir"
+            else
+              echo "No deployment found for pr-${{ inputs.pr_number }}; nothing to cleanup"
+            fi
