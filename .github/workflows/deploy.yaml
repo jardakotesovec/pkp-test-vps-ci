@@ -154,6 +154,9 @@ jobs:
               dir="$base/$branch"
               tmp_dir="$base/${branch}_tmp"
 
+              # Ensure base directory exists
+              mkdir -p "$base"
+
               # Clean up previous temp dir
               rm -rf "$tmp_dir"
 
