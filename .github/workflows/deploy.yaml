@@ -1,3 +1,4 @@
+```yaml
 name: Deploy PKP Project to VPS
 
 on:
@@ -100,11 +101,19 @@ jobs:
             clone_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).head_branch || inputs.branch }}"
             copies="${{ inputs.copies }}"
 
+            echo "DEBUG: Project: $project"
+            echo "DEBUG: Branch: $branch"
+            echo "DEBUG: Base branch: $base_branch"
+            echo "DEBUG: Clone owner: $clone_owner"
+            echo "DEBUG: Clone branch: $clone_branch"
+            echo "DEBUG: Copies input: $copies"
+
             # Determine if PR deployment
             is_pr=0
             if [ -n "${{ inputs.pr_number }}" ]; then
               is_pr=1
             fi
+            echo "DEBUG: Is PR: $is_pr"
 
             # Set suffixes (default empty for main copy; add others for branches if copies provided)
             suffixes=("")
@@ -112,12 +121,14 @@ jobs:
               IFS=',' read -r -a additional <<< "$copies"
               suffixes+=("${additional[@]}")
             fi
+            echo "DEBUG: Suffixes: ${suffixes[@]}"
 
             # Extract MySQL root password (once)
             PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
 
             # Build once for efficiency (composer and npm)
             build_dir="/tmp/build_${project}_${branch//[^a-zA-Z0-9]/_}"
+            echo "DEBUG: Build dir: $build_dir"
             rm -rf "$build_dir"
 
             git clone \
@@ -139,8 +150,12 @@ jobs:
             npm install
             npm run build
 
+            echo "DEBUG: Build completed, starting deployment loop"
+
             # Loop over suffixes to deploy each copy
             for suffix in "${suffixes[@]}"; do
+              echo "DEBUG: Deploying for suffix: $suffix"
+
               if [ -z "$suffix" ]; then
                 variant="$project"
                 db_variant="$base_branch"
@@ -149,19 +164,30 @@ jobs:
                 db_variant="${suffix}_${base_branch}"
               fi
 
+              echo "DEBUG: Variant: $variant"
+              echo "DEBUG: DB variant: $db_variant"
+
               db_name="${project}_${db_variant}"
               base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$variant"
               dir="$base/$branch"
               tmp_dir="$base/${branch}_tmp"
 
+              echo "DEBUG: DB name: $db_name"
+              echo "DEBUG: Base: $base"
+              echo "DEBUG: Dir: $dir"
+              echo "DEBUG: Tmp dir: $tmp_dir"
+
               # Ensure base directory exists
               mkdir -p "$base"
+              echo "DEBUG: Created base dir if needed: $base"
 
               # Clean up previous temp dir
               rm -rf "$tmp_dir"
+              echo "DEBUG: Cleaned tmp dir"
 
               # Copy built dir to temp
               cp -r "$build_dir" "$tmp_dir"
+              echo "DEBUG: Copied build to tmp dir"
               cd "$tmp_dir"
 
               # Copy and update config (per copy)
@@ -173,11 +199,15 @@ jobs:
 
               sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
 
+              echo "DEBUG: Updated config"
+
               # Generate app key (instance-specific, after config setup)
               php lib/pkp/tools/appKey.php generate
+              echo "DEBUG: Generated app key"
 
               # Prepare persistent directories
               mkdir -p files public
+              echo "DEBUG: Prepared files and public dirs"
 
               if [ $is_pr -eq 1 ]; then
                 dataset_tmp="/tmp/datasets_${variant}_${branch//[^a-zA-Z0-9]/_}"
@@ -209,6 +239,7 @@ jobs:
                 rm -rf "$dataset_tmp"
 
                 cd "$tmp_dir"
+                echo "DEBUG: Initialized PR dataset and DB"
               else
                 # For branches, preserve files/public if dir exists
                 if [ -d "$dir" ]; then
@@ -216,17 +247,24 @@ jobs:
                   mv "$dir/files" files
                   rm -rf public
                   mv "$dir/public" public
+                  echo "DEBUG: Preserved existing files and public"
+                else
+                  echo "DEBUG: No existing dir, not preserving"
                 fi
               fi
 
               # Now minimize downtime: delete old dir (if any) and move temp to live
               rm -rf "$dir"
               mv "$tmp_dir" "$dir"
+              echo "DEBUG: Moved tmp to dir: $dir"
 
               # Set permissions on entire dir
               chown -R deploy:www-data "$dir"
               chmod -R 775 "$dir"
+              echo "DEBUG: Set permissions on $dir"
             done
 
             # Clean up build dir
             rm -rf "$build_dir"
+            echo "DEBUG: Cleaned up build dir"
+```
