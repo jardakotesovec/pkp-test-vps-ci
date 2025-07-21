@@ -76,10 +76,10 @@ jobs:
               do_import=1  # Import dataset like PR
             elif [ -n "$pr_number" ]; then
               branch="pr-$pr_number"
-              base_branch="${{ fromJSON(steps.fetch-pr.outputs.result).base_branch }}"
+              base_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).base_branch || inputs.branch }}"
               dataset_branch="$base_branch"  # Use base_branch for dataset
-              clone_owner="${{ fromJSON(steps.fetch-pr.outputs.result).head_owner }}"
-              clone_branch="${{ fromJSON(steps.fetch-pr.outputs.result).head_branch }}"
+              clone_owner="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).head_owner || github.repository_owner }}"
+              clone_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).head_branch || inputs.branch }}"
               do_import=1  # Import dataset
             else
               branch="$input_branch"
