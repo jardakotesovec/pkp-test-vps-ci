@@ -135,7 +135,7 @@ jobs:
             npm run build
 
             # Clean up unnecessary directories to reduce copy size/time
-            rm -rf .git node_modules
+            rm -rf node_modules
 
             # Loop over suffixes to deploy each copy
             for suffix in "${suffixes[@]}"; do
