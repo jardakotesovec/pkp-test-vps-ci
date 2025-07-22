@@ -30,6 +30,14 @@ on:
         required: true
       SSH_USERNAME:
         required: true
+      SMTP_SERVER:
+        required: false
+      SMTP_PORT:
+        required: false
+      SMTP_USERNAME:
+        required: false
+      SMTP_PASSWORD:
+        required: false
 
 jobs:
   deploy:
@@ -167,10 +175,17 @@ jobs:
               sed -i '/^\[database\]$/,/^\[/ s/^username = .*/username = root/' config.inc.php
               sed -i '/^\[database\]$/,/^\[/ s/^password = .*/password = "'"$PASSWORD"'"/' config.inc.php
               sed -i '/^\[database\]$/,/^\[/ s/^name = .*/name = '"$db_name"'/' config.inc.php
+
               sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
-              sed -i '/^\[email\]$/,/^\[/ s/^smtp = .*/smtp = On/' config.inc.php
-              sed -i '/^\[email\]$/,/^\[/ s/^smtp_server = .*/smtp_server = 127.0.0.1/' config.inc.php
-              sed -i '/^\[email\]$/,/^\[/ s/^smtp_port = .*/smtp_port = 1025/' config.inc.php
+
+              # Configure email settings to use SMTP
+              sed -i '/^\[email\]$/,/^\[/ s/^default = .*/default = smtp/' config.inc.php
+              sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp = .*/smtp = On/' config.inc.php
+              sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_server = .*/smtp_server = ${{ secrets.SMTP_SERVER || '127.0.0.1 }}/' config.inc.php
+              sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_port = .*/smtp_port = ${{ secrets.SMTP_PORT || '1025' }}/' config.inc.php
+              sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_auth = .*/smtp_auth = ssl/' config.inc.php
+              sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_username = .*/smtp_username = ${{ secrets.SMTP_USERNAME || '' }}/' config.inc.php
+              sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_password = .*/smtp_password = ${{ secrets.SMTP_PASSWORD || '' }}/' config.inc.php
 
               # Prepare persistent directories
               mkdir -p files public
