@@ -167,8 +167,10 @@ jobs:
               sed -i '/^\[database\]$/,/^\[/ s/^username = .*/username = root/' config.inc.php
               sed -i '/^\[database\]$/,/^\[/ s/^password = .*/password = "'"$PASSWORD"'"/' config.inc.php
               sed -i '/^\[database\]$/,/^\[/ s/^name = .*/name = '"$db_name"'/' config.inc.php
-
               sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
+              sed -i '/^\[email\]$/,/^\[/ s/^smtp = .*/smtp = On/' config.inc.php
+              sed -i '/^\[email\]$/,/^\[/ s/^smtp_server = .*/smtp_server = 127.0.0.1/' config.inc.php
+              sed -i '/^\[email\]$/,/^\[/ s/^smtp_port = .*/smtp_port = 1025/' config.inc.php
 
               # Prepare persistent directories
               mkdir -p files public
@@ -209,9 +211,9 @@ jobs:
                 files_dir="$dataset_tmp/$project/$dataset_branch/mysql/files"
                 public_dir="$dataset_tmp/$project/$dataset_branch/mysql/public"
 
-                echo "Copying files from $files_dir"
+                echo "Copying files from $files_dir to $tmp_dir/files"
                 cp -r "$files_dir" files
-                echo "Copying public from $public_dir"
+                echo "Copying public from $public_dir to $tmp_dir/public"
                 cp -r "$public_dir" public
 
                 echo "Setting permissions on files and public"
