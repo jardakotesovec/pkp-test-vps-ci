@@ -191,6 +191,8 @@ jobs:
                 echo "Contents after sparse-checkout:"
                 ls -R $project/$dataset_branch/mysql
 
+                cd "$tmp_dir"
+
                 # Drop DB if exists, create fresh
                 echo "Creating database $db_name"
                 mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
@@ -220,8 +222,6 @@ jobs:
                 ls -l files
 
                 rm -rf "$dataset_tmp"
-
-                cd "$tmp_dir"
               else
                 # For branches, preserve files/public if dir exists
                 if [ -d "$dir" ]; then
