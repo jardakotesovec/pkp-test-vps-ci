@@ -70,10 +70,16 @@ jobs:
             if [ -n "$tag" ]; then
               clone_owner="pkp"
               clone_branch="$tag"
-              dataset_branch="$tag"  # Use tag for dataset path
               base_branch="$tag"  # Use tag for DB naming
               branch="$tag"  # Use tag as directory name
               do_import=1  # Import dataset like PR
+
+              # Determine dataset_branch for tags
+              version="$tag"
+              if [[ "$tag" == "${project}-"* ]]; then
+                version="${tag#${project}-}"
+              fi
+              dataset_branch="stable-${version%%-*}"
             elif [ -n "$pr_number" ]; then
               branch="pr-$pr_number"
               base_branch="${{ inputs.pr_number && fromJSON(steps.fetch-pr.outputs.result).base_branch || inputs.branch }}"
@@ -164,9 +170,6 @@ jobs:
 
               sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
 
-              # Generate app key (instance-specific, after config setup)
-              php lib/pkp/tools/appKey.php generate
-
               # Prepare persistent directories
               mkdir -p files public
 
@@ -209,6 +212,9 @@ jobs:
                   mv "$dir/public" public
                 fi
               fi
+
+              # Generate app key (instance-specific, after config and DB setup)
+              php lib/pkp/tools/appKey.php generate
 
               # Now minimize downtime: delete old dir (if any) and move temp to live
               rm -rf "$dir"
