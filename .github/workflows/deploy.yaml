@@ -90,6 +90,9 @@ jobs:
               do_import=0  # No import for regular branches
             fi
 
+            # Sanitize base_branch for DB name (replace dashes with underscores)
+            db_safe_base="${base_branch//-/_}"
+
             copies="${{ inputs.copies }}"
 
             # Set suffixes (default empty for main copy; add others if copies provided and not PR/tag)
@@ -132,10 +135,10 @@ jobs:
             for suffix in "${suffixes[@]}"; do
               if [ -z "$suffix" ]; then
                 variant="$project"
-                db_variant="$base_branch"
+                db_variant="$db_safe_base"
               else
                 variant="${project}-${suffix}"
-                db_variant="${suffix}_${base_branch}"
+                db_variant="${suffix}_${db_safe_base}"
               fi
 
               db_name="${project}_${db_variant}"
