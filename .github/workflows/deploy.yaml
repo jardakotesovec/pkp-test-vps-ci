@@ -177,6 +177,8 @@ jobs:
                 dataset_tmp="/tmp/datasets_${variant}_${branch//[^a-zA-Z0-9]/_}"
                 rm -rf "$dataset_tmp"
 
+                echo "Cloning datasets repo for branch: $dataset_branch"
+
                 git clone \
                   --depth 1 \
                   --filter=blob:none \
@@ -186,19 +188,36 @@ jobs:
                 cd "$dataset_tmp"
                 git sparse-checkout set $project/$dataset_branch/mysql
 
+                echo "Contents after sparse-checkout:"
+                ls -R $project/$dataset_branch/mysql
+
                 # Drop DB if exists, create fresh
+                echo "Creating database $db_name"
                 mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+                echo "Database created."
 
                 # Load SQL
-                mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$dataset_tmp/$project/$dataset_branch/mysql/database.sql"
+                sql_file="$dataset_tmp/$project/$dataset_branch/mysql/database.sql"
+                echo "Loading SQL from $sql_file"
+                mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$sql_file"
 
                 # Reset and copy fresh files/public from dataset
                 rm -rf files public
-                cp -r "$dataset_tmp/$project/$dataset_branch/mysql/files" files
-                cp -r "$dataset_tmp/$project/$dataset_branch/mysql/public" public
 
+                files_dir="$dataset_tmp/$project/$dataset_branch/mysql/files"
+                public_dir="$dataset_tmp/$project/$dataset_branch/mysql/public"
+
+                echo "Copying files from $files_dir"
+                cp -r "$files_dir" files
+                echo "Copying public from $public_dir"
+                cp -r "$public_dir" public
+
+                echo "Setting permissions on files and public"
                 chown -R deploy:www-data files public
                 chmod -R 775 files public
+
+                echo "Contents of files folder after copy:"
+                ls -l files
 
                 rm -rf "$dataset_tmp"
 
@@ -214,6 +233,7 @@ jobs:
               fi
 
               # Generate app key (instance-specific, after config and DB setup)
+              echo "Generating app key"
               php lib/pkp/tools/appKey.php generate
 
               # Now minimize downtime: delete old dir (if any) and move temp to live
