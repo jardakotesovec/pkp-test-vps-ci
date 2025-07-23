@@ -124,7 +124,7 @@ jobs:
             rm -rf "$build_dir"
 
             git clone \
-              --depth 1 \
+              --depth 5 \
               --single-branch \
               --branch "$clone_branch" \
               --recurse-submodules \
