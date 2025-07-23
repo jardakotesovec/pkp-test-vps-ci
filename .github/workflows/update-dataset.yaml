@@ -41,6 +41,9 @@ jobs:
             branch="${{ inputs.branch }}"
             copies="${{ inputs.copies }}"
 
+            # Sanitize branch for DB name (replace dashes with underscores, matching deployment logic)
+            db_safe_branch="${branch//-/_}"
+
             # Set suffixes from required copies input
             IFS=',' read -r -a suffixes <<< "$copies"
 
@@ -66,10 +69,10 @@ jobs:
             for suffix in "${suffixes[@]}"; do
               if [ "$suffix" == "default" ]; then
                 variant="$project"
-                db_variant="$branch"
+                db_variant="$db_safe_branch"
               else
                 variant="${project}-${suffix}"
-                db_variant="${suffix}_${branch}"
+                db_variant="${suffix}_${db_safe_branch}"
               fi
 
               db_name="${project}_${db_variant}"
@@ -87,9 +90,10 @@ jobs:
               cp -r "$dataset_path/files" "$app_dir/files"
               cp -r "$dataset_path/public" "$app_dir/public"
 
-              # Set permissions
-              chown -R www-data:www-data "$app_dir/files" "$app_dir/public"
-              chmod -R 775 "$app_dir/files" "$app_dir/public"
+
+              # Set permissions (matching deployment: use deploy:www-data for consistency)
+              chown -R deploy:www-data "$app_dir/files" "$app_dir/public" "$app_dir/status.php"
+              chmod -R 775 "$app_dir/files" "$app_dir/public" "$app_dir/status.php"
             done
 
             # Clean up temp dir
