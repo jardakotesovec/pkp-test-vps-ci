@@ -104,8 +104,8 @@ jobs:
               do_import=0  # No import for regular branches
             fi
 
-            # Sanitize base_branch for DB name (replace dashes with underscores)
-            db_safe_base="${base_branch//-/_}"
+            # Sanitize branch for DB name (replace dashes with underscores)
+            db_safe_base="${branch//-/_}"
 
             copies="${{ inputs.copies }}"
 
