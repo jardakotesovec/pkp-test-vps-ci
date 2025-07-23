@@ -127,12 +127,11 @@ jobs:
               --depth 5 \
               --single-branch \
               --branch "$clone_branch" \
-              --recurse-submodules \
-              --shallow-submodules \
               --filter=blob:none \
               https://github.com/$clone_owner/$project.git "$build_dir"
-
             cd "$build_dir"
+
+            git submodule update --init --recursive --depth 5
 
             # Ignore file mode changes (prevents git status from showing permission modifications)
             git config core.fileMode false
