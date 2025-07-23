@@ -192,6 +192,11 @@ jobs:
               # Prepare persistent directories
               mkdir -p files public
 
+              #copy status.php
+              cp /root/status.php .
+              chown -R deploy:www-data status.php
+              chmod -R 775 status.php
+
               if [ $do_import -eq 1 ]; then
                 dataset_tmp="/tmp/datasets_${variant}_${branch//[^a-zA-Z0-9]/_}"
                 rm -rf "$dataset_tmp"
@@ -233,13 +238,9 @@ jobs:
                 echo "Copying public from $public_dir to $tmp_dir/public"
                 cp -r "$public_dir" public
 
-                #copy status.php
-                cp /root/status.php .
-
-
                 echo "Setting permissions on files and public"
-                chown -R deploy:www-data files public status.php
-                chmod -R 775 files public status.php
+                chown -R deploy:www-data files public
+                chmod -R 775 files public
 
                 echo "Contents of files folder after copy:"
                 ls -l files
