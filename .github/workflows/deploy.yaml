@@ -137,7 +137,9 @@ jobs:
             # Install dependencies (no config needed yet)
             composer --working-dir=lib/pkp install
             composer --working-dir=plugins/generic/citationStyleLanguage install
-            composer --working-dir=plugins/paymethod/paypal install
+            if [ "$project" = "ojs" ] || [ "$project" = "omp" ]; then
+              composer --working-dir=plugins/paymethod/paypal install
+            fi
 
             npm install
             npm run build
@@ -254,8 +256,10 @@ jobs:
               fi
 
               # Generate app key (instance-specific, after config and DB setup)
-              echo "Generating app key"
-              php lib/pkp/tools/appKey.php generate
+              if [ "$base_branch" = "stable-3_5_0" ] || [ "$base_branch" = "main" ]; then
+                echo "Generating app key"
+                php lib/pkp/tools/appKey.php generate
+              fi
 
               # Now minimize downtime: delete old dir (if any) and move temp to live
               rm -rf "$dir"
