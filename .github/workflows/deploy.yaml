@@ -231,9 +231,13 @@ jobs:
                 echo "Copying public from $public_dir to $tmp_dir/public"
                 cp -r "$public_dir" public
 
+                #copy status.php
+                cp /root/status.php .
+
+
                 echo "Setting permissions on files and public"
-                chown -R deploy:www-data files public
-                chmod -R 775 files public
+                chown -R deploy:www-data files public status.php
+                chmod -R 775 files public status.php
 
                 echo "Contents of files folder after copy:"
                 ls -l files
