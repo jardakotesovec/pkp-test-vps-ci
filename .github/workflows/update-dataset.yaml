@@ -92,7 +92,7 @@ jobs:
 
 
               # Set permissions (matching deployment: use deploy:www-data for consistency)
-              chown -R deploy:www-data "$app_dir/files" "$app_dir/public" "$app_dir/status.php"
+              chown -R www-data:www-data "$app_dir/files" "$app_dir/public" "$app_dir/status.php"
               chmod -R 775 "$app_dir/files" "$app_dir/public" "$app_dir/status.php"
             done
 

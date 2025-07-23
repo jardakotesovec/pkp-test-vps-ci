@@ -134,6 +134,9 @@ jobs:
 
             cd "$build_dir"
 
+            # Ignore file mode changes (prevents git status from showing permission modifications)
+            git config core.fileMode false
+
             # Install dependencies (no config needed yet)
             composer --working-dir=lib/pkp install
             composer --working-dir=plugins/generic/citationStyleLanguage install
@@ -194,8 +197,7 @@ jobs:
 
               #copy status.php
               cp /root/status.php .
-              chown -R deploy:www-data status.php
-              chmod -R 775 status.php
+              chown -R www-data:www-data status.php
 
               if [ $do_import -eq 1 ]; then
                 dataset_tmp="/tmp/datasets_${variant}_${branch//[^a-zA-Z0-9]/_}"
@@ -239,7 +241,7 @@ jobs:
                 cp -r "$public_dir" public
 
                 echo "Setting permissions on files and public"
-                chown -R deploy:www-data files public
+                chown -R www-data:www-data files public
                 chmod -R 775 files public
 
                 echo "Contents of files folder after copy:"
@@ -266,9 +268,10 @@ jobs:
               rm -rf "$dir"
               mv "$tmp_dir" "$dir"
 
-              # Set permissions on entire dir
-              chown -R deploy:www-data "$dir"
-              chmod -R 775 "$dir"
+              # Set permissions on entire dir (uncommented and enhanced)
+              chown -R www-data:www-data "$dir"
+              find "$dir" -type d -exec chmod 755 {} \;
+              find "$dir" -type f -exec chmod 644 {} \;
             done
 
             # Clean up build dir
