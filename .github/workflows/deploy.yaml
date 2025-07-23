@@ -242,7 +242,7 @@ jobs:
 
                 echo "Setting permissions on files and public"
                 chown -R www-data:www-data files public
-                chmod -R 775 files public
+                # chmod -R 775 files public
 
                 echo "Contents of files folder after copy:"
                 ls -l files
@@ -270,8 +270,8 @@ jobs:
 
               # Set permissions on entire dir (uncommented and enhanced)
               chown -R www-data:www-data "$dir"
-              find "$dir" -type d -exec chmod 755 {} \;
-              find "$dir" -type f -exec chmod 644 {} \;
+              # find "$dir" -type d -exec chmod 755 {} \;
+              # find "$dir" -type f -exec chmod 644 {} \;
             done
 
             # Clean up build dir
