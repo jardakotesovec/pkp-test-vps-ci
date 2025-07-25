@@ -190,7 +190,8 @@ jobs:
               sed -i '/^\[database\]$/,/^\[/ s/^name = .*/name = '"$db_name"'/' config.inc.php
 
               sed -i '/^\[general\]$/,/^\[/ s/^installed = .*/installed = On/' config.inc.php
-
+              sed -i '/^\[general\]$/,/^\[/ s/^allowed_hosts = .*/allowed_hosts = '\''["${{ secrets.SSH_HOST }}.sslip.io"]'\''/' config.inc.php
+              
               # Configure email settings to use SMTP
               sed -i '/^\[email\]$/,/^\[/ s/^default = .*/default = smtp/' config.inc.php
               sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp = .*/smtp = On/' config.inc.php
