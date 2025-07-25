@@ -70,6 +70,10 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # Load nvm to ensure it's available in this non-interactive SSH session
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+
             project="${{ inputs.project }}"
             tag="${{ inputs.tag }}"
             pr_number="${{ inputs.pr_number }}"
@@ -199,7 +203,7 @@ jobs:
               # Prepare persistent directories
               mkdir -p files public
 
-              #copy status.php
+              # Copy status.php
               cp /root/status.php .
               chown -R www-data:www-data status.php
 
@@ -272,7 +276,7 @@ jobs:
               rm -rf "$dir"
               mv "$tmp_dir" "$dir"
 
-              # Set permissions on entire dir (uncommented and enhanced)
+              # Set permissions on entire dir
               chown -R www-data:www-data "$dir"
               # find "$dir" -type d -exec chmod 755 {} \;
               # find "$dir" -type f -exec chmod 644 {} \;
