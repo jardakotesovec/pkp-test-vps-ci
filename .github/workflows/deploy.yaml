@@ -137,14 +137,19 @@ jobs:
             git config core.fileMode false
 
             # Install dependencies (no config needed yet)
-            composer --working-dir=lib/pkp install
-            composer --working-dir=plugins/generic/citationStyleLanguage install
+            COMPOSER_ALLOW_SUPERUSER=1 composer --working-dir=lib/pkp install
+            COMPOSER_ALLOW_SUPERUSER=1 composer --working-dir=plugins/generic/citationStyleLanguage install
             if [ "$project" = "ojs" ] || [ "$project" = "omp" ]; then
-              composer --working-dir=plugins/paymethod/paypal install
+              COMPOSER_ALLOW_SUPERUSER=1 composer --working-dir=plugins/paymethod/paypal install
             fi
 
-            npm install
-            npm run build
+            if [[ "$base_branch" == *"3_3_0"* ]]; then
+              nvm exec 16 npm install
+              nvm exec 16 npm run build
+            else
+              npm install
+              npm run build
+            fi
 
             # Clean up unnecessary directories to reduce copy size/time
             rm -rf node_modules
