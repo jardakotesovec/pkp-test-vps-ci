@@ -38,12 +38,23 @@ jobs:
             dir="$base/pr-${{ inputs.pr_number }}"
             db_name="${project}_pr_${{ inputs.pr_number }}"
 
-            # Extract MySQL root password
+            # Extract MySQL root password (once)
             PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
 
-            # Drop DB if exists
-            if mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "SHOW DATABASES LIKE '$db_name'" | grep -q "$db_name"; then
-              mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE $db_name;"
+            # Create a unique temporary MySQL config file to avoid passing password on CLI
+            cnf_file=$(mktemp /tmp/my.cnf.XXXXXX)
+            echo "[client]" > "$cnf_file"
+            echo "user=root" >> "$cnf_file"
+            echo "password=$PASSWORD" >> "$cnf_file"
+            chmod 600 "$cnf_file"
+
+            # Set up trap to clean up temporary file on exit
+            trap 'rm -f "$cnf_file"' EXIT
+
+            # Check if DB exists
+            if mysql --defaults-file="$cnf_file" -h localhost -P 3306 -e "SHOW DATABASES LIKE '$db_name'" | grep -q "$db_name"; then
+              # Drop DB if exists
+              mysql --defaults-file="$cnf_file" -h localhost -P 3306 -e "DROP DATABASE $db_name;"
               echo "Dropped database $db_name"
             else
               echo "No database found for $db_name; nothing to drop"
