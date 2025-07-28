@@ -123,9 +123,20 @@ jobs:
             # Extract MySQL root password (once)
             PASSWORD=$(grep 'mysql_root_pass=' /root/.hcloud_password | sed 's/.*="//;s/"$//')
 
-            # Build once for efficiency (composer and npm)
-            build_dir="/tmp/build_${project}_${branch//[^a-zA-Z0-9]/_}"
-            rm -rf "$build_dir"
+            # Create a unique temporary MySQL config file if import is needed (to avoid race conditions)
+            if [ $do_import -eq 1 ]; then
+              cnf_file=$(mktemp /tmp/my.cnf.XXXXXX)
+              echo "[client]" > "$cnf_file"
+              echo "user=root" >> "$cnf_file"
+              echo "password=$PASSWORD" >> "$cnf_file"
+              chmod 600 "$cnf_file"
+            fi
+
+            # Create a unique temporary directory for the build
+            build_dir=$(mktemp -d /tmp/build_${project}_${branch//[^a-zA-Z0-9]/_}.XXXXXX)
+
+            # Set up trap to clean up temporary files and directory on exit
+            trap 'rm -f "${cnf_file:-}"; rm -rf "$build_dir"' EXIT
 
             git clone \
               --depth 5 \
@@ -209,8 +220,8 @@ jobs:
               chown -R www-data:www-data status.php
 
               if [ $do_import -eq 1 ]; then
-                dataset_tmp="/tmp/datasets_${variant}_${branch//[^a-zA-Z0-9]/_}"
-                rm -rf "$dataset_tmp"
+                # Create a unique temporary directory for the dataset clone
+                dataset_tmp=$(mktemp -d /tmp/datasets_${variant}_${branch//[^a-zA-Z0-9]/_}.XXXXXX)
 
                 echo "Cloning datasets repo for branch: $dataset_branch"
 
@@ -228,15 +239,15 @@ jobs:
 
                 cd "$tmp_dir"
 
-                # Drop DB if exists, create fresh
+                # Drop DB if exists, create fresh using the config file
                 echo "Creating database $db_name"
-                mysql -u root -p"$PASSWORD" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
+                mysql --defaults-file="$cnf_file" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"
                 echo "Database created."
 
-                # Load SQL
+                # Load SQL using the config file
                 sql_file="$dataset_tmp/$project/$dataset_branch/mysql/database.sql"
                 echo "Loading SQL from $sql_file"
-                mysql -u root -p"$PASSWORD" -h localhost -P 3306 "$db_name" < "$sql_file"
+                mysql --defaults-file="$cnf_file" -h localhost -P 3306 "$db_name" < "$sql_file"
 
                 # Reset and copy fresh files/public from dataset
                 rm -rf files public
@@ -256,6 +267,7 @@ jobs:
                 echo "Contents of files folder after copy:"
                 ls -l files
 
+                # Clean up dataset temp dir
                 rm -rf "$dataset_tmp"
               else
                 # For branches, preserve files/public if dir exists
@@ -282,6 +294,3 @@ jobs:
               # find "$dir" -type d -exec chmod 755 {} \;
               # find "$dir" -type f -exec chmod 644 {} \;
             done
-
-            # Clean up build dir
-            rm -rf "$build_dir"
