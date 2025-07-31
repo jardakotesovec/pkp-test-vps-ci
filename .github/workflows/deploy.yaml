@@ -208,7 +208,7 @@ jobs:
               sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp = .*/smtp = On/' config.inc.php
               sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_server = .*/smtp_server = ${{ secrets.SMTP_SERVER || '127.0.0.1' }}/' config.inc.php
               sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_port = .*/smtp_port = ${{ secrets.SMTP_PORT || '1025' }}/' config.inc.php
-              sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_auth = .*/smtp_auth = ssl/' config.inc.php
+              # sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_auth = .*/smtp_auth = ssl/' config.inc.php
               sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_username = .*/smtp_username = ${{ secrets.SMTP_USERNAME || '' }}/' config.inc.php
               sed -i '/^\[email\]$/,/^\[/ s/^;*\s*smtp_password = .*/smtp_password = ${{ secrets.SMTP_PASSWORD || '' }}/' config.inc.php
 
