@@ -280,11 +280,12 @@ jobs:
               fi
 
               # Generate app key (instance-specific, after config and DB setup)
-              if [ "$base_branch" = "stable-3_5_0" ] || [ "$base_branch" = "main" ]; then
-                echo "Generating app key"
-                php lib/pkp/tools/appKey.php generate
-              fi
-
+            case "$base_branch" in
+                stable-3_5_0 | main | 3_5_0*)
+                    echo "Generating app key"
+                    php lib/pkp/tools/appKey.php generate
+                    ;;
+            esac
               # Now minimize downtime: delete old dir (if any) and move temp to live
               rm -rf "$dir"
               mv "$tmp_dir" "$dir"
