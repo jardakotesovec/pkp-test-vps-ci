@@ -149,10 +149,9 @@ jobs:
             git submodule update --init --recursive --depth 5
             # Explicitely checkout the main branches, as devs don't update submodules often enough on the main
             if [ "$input_branch" = "main" ]; then
-              git --git-dir=./lib/pkp --work-tree=./lib/pkp checkout main
-              git --git-dir=./lib/ui-library --work-tree=./lib/ui-library checkout main
+              git -C ./lib/pkp checkout main
+              git -C ./lib/ui-library checkout main
             fi
-
             # Ignore file mode changes (prevents git status from showing permission modifications)
             git config core.fileMode false
 
