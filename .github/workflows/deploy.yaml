@@ -266,8 +266,7 @@ jobs:
 
                 echo "Setting permissions on files and public"
                 chown -R www-data:www-data files public
-                chmod -R g+w files public
-
+                chmod -R g+rwX files public
                 # chmod -R 775 files public
 
                 echo "Contents of files folder after copy:"
@@ -298,7 +297,7 @@ jobs:
 
               # Set permissions on entire dir
               chown -R www-data:www-data "$dir"
-              chmod -R g+w "$dir"
+              chmod -R g+rwX "$dir"
               find "$dir" -type d -exec chmod g+s {} +
               setfacl -R -d -m g::rwx -d -m o::rx "$dir"
             done
