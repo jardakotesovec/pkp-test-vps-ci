@@ -101,7 +101,7 @@ jobs:
               cp -r "$dataset_path/public" "$app_dir/public"
 
               # Set permissions for the copied directories and status file
-              chown -R www-data:www-data "$app_dir/files" "$app_dir/public" "$app_dir/status.php"
+              chown -R pkp:www-data "$app_dir/files" "$app_dir/public" "$app_dir/status.php"
               chmod -R 775 "$app_dir/files" "$app_dir/public" "$app_dir/status.php"
               find "$app_dir/files" "$app_dir/public" -type d -exec chmod g+s {} +
               setfacl -R -d -m g::rwx -d -m o::rx "$app_dir/files" "$app_dir/public"
