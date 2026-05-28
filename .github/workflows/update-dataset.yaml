@@ -8,8 +8,12 @@ on:
         required: true
         type: string
       branch:
-        description: "The branch name to update dataset for"
-        required: true
+        description: "The branch name to update dataset for (used when tag is not set)"
+        required: false
+        type: string
+      tag:
+        description: "Tag to update dataset for (overrides branch if set, e.g., '3_5_0-1' or 'ojs-3_5_0-1')"
+        required: false
         type: string
       copies:
         description: "Comma-separated list of copies to update (e.g., 'default,qa,hosting'); 'default' for the one without suffix"
@@ -38,11 +42,25 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             project="${{ inputs.project }}"
-            branch="${{ inputs.branch }}"
+            tag="${{ inputs.tag }}"
+            branch_input="${{ inputs.branch }}"
             copies="${{ inputs.copies }}"
 
-            # Sanitize branch for DB name (replace dashes with underscores, matching deployment logic)
-            db_safe_branch="${branch//-/_}"
+            # If tag is provided it takes precedence; dataset still comes from stable-<major>.
+            if [ -n "$tag" ]; then
+              target="$tag"
+              version="$tag"
+              if [[ "$tag" == "${project}-"* ]]; then
+                version="${tag#${project}-}"
+              fi
+              dataset_branch="stable-${version%%-*}"
+            else
+              target="$branch_input"
+              dataset_branch="$branch_input"
+            fi
+
+            # Sanitize for DB name (replace dashes with underscores, matching deployment logic)
+            db_safe_target="${target//-/_}"
 
             # Set suffixes from required copies input
             IFS=',' read -r -a suffixes <<< "$copies"
@@ -58,7 +76,7 @@ jobs:
             chmod 600 "$cnf_file"
 
             # Create a unique temporary directory for the dataset clone
-            tmp_dir=$(mktemp -d /tmp/datasets_${project}_${branch//[^a-zA-Z0-9]/_}.XXXXXX)
+            tmp_dir=$(mktemp -d /tmp/datasets_${project}_${target//[^a-zA-Z0-9]/_}.XXXXXX)
 
             # Set up trap to clean up temporary files and directory on exit
             trap 'rm -f "$cnf_file"; rm -rf "$tmp_dir"' EXIT
@@ -71,23 +89,23 @@ jobs:
               https://github.com/pkp/datasets.git "$tmp_dir"
 
             cd "$tmp_dir"
-            git sparse-checkout set $project/$branch/mysql
+            git sparse-checkout set $project/$dataset_branch/mysql
 
-            dataset_path="$tmp_dir/$project/$branch/mysql"
+            dataset_path="$tmp_dir/$project/$dataset_branch/mysql"
 
             # Loop over each suffix to update the corresponding copy
             for suffix in "${suffixes[@]}"; do
               if [ "$suffix" == "default" ]; then
                 variant="$project"
-                db_variant="$db_safe_branch"
+                db_variant="$db_safe_target"
               else
                 variant="${project}-${suffix}"
-                db_variant="${suffix}_${db_safe_branch}"
+                db_variant="${suffix}_${db_safe_target}"
               fi
 
               db_name="${project}_${db_variant}"
               base="/var/www/${{ secrets.SSH_HOST }}.sslip.io/$variant"
-              app_dir="$base/$branch"
+              app_dir="$base/$target"
 
               # Drop and recreate the database using the config file
               mysql --defaults-file="$cnf_file" -h localhost -P 3306 -e "DROP DATABASE IF EXISTS $db_name; CREATE DATABASE $db_name CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;"

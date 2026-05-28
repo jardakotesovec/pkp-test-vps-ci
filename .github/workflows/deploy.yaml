@@ -223,7 +223,14 @@ jobs:
               cp /root/status.php .
               chown -R pkp:www-data status.php
 
-              if [ $do_import -eq 1 ]; then
+              # Tag redeploy: preserve existing copy's DB and files; only first-time
+              # deploys of a tag (no live dir yet) get a fresh dataset import.
+              copy_do_import=$do_import
+              if [ -n "$tag" ] && [ -d "$dir" ]; then
+                copy_do_import=0
+              fi
+
+              if [ $copy_do_import -eq 1 ]; then
                 # Create a unique temporary directory for the dataset clone
                 dataset_tmp=$(mktemp -d /tmp/datasets_${variant}_${branch//[^a-zA-Z0-9]/_}.XXXXXX)
 
