@@ -113,9 +113,9 @@ jobs:
 
             copies="${{ inputs.copies }}"
 
-            # Set suffixes (default empty for main copy; add others if copies provided and not PR/tag)
+            # Set suffixes (default empty for main copy; add others if caller passes them)
             suffixes=("")
-            if [ $do_import -eq 0 ] && [ -n "$copies" ]; then
+            if [ -n "$copies" ]; then
               IFS=',' read -r -a additional <<< "$copies"
               suffixes+=("${additional[@]}")
             fi
